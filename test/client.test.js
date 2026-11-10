@@ -108,3 +108,21 @@ test('client contributes cards and an app view, with no session-panel section', 
   client.register({ api: {}, register: (slot) => slots.push(slot) });
   assert.deepEqual(slots, ['view', 'card.pill']);
 });
+
+test('session links and count tiles keep keyboard focus across graph updates', () => {
+  for (const key of ['session:one', 'count:queued']) {
+    const f = fixture();
+    let active;
+    Object.defineProperty(f.document, 'activeElement', { configurable: true, get: () => active });
+    const prototype = f.window.HTMLElement.prototype;
+    const original = prototype.focus;
+    prototype.focus = function () { active = this; };
+    try {
+      render(f.el, data, f.options);
+      [...f.el.querySelectorAll('[data-watermark-focus]')].find((el) => el.dataset.watermarkFocus === key).focus();
+      render(f.el, data, f.options);
+      assert.equal(active.dataset.watermarkFocus, key);
+      assert.ok(f.el.contains(active));
+    } finally { prototype.focus = original; }
+  }
+});

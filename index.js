@@ -21,7 +21,10 @@ export default {
   settings: SETTINGS,
   tools,
   graph: ({ host }) => ({ watermark: host.stores.resources.snapshot() }),
-  sweeps: [{ id: 'sample', everyMs: 5000, run: ({ host }) => host.stores.resources.refresh(host) }],
+  sweeps: [
+    { id: 'sample', everyMs: 5000, run: ({ host }) => host.stores.resources.refresh(host) },
+    { id: 'session-measurements', everyMs: 5000, run: ({ host }) => host.stores.resources.measureSessions(host) },
+  ],
   deactivate: ({ host }) => host.stores.resources.close(),
   session: {
     onArchive: ({ host, sessionId }) => cancelQueued(host, sessionId),

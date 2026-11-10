@@ -1,12 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createSessionSampler, parseProcesses, cpuMilliseconds, sessionTag, attribute } from '../server/processes.js';
+import { createSessionSampler, parseProcesses, cpuMilliseconds, sessionTag, attribute, linuxCpu } from '../server/processes.js';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { setTimeout } from 'node:timers/promises';
 
 const sessions = [{ sessionId: 'a', runtime: 'local' }, { sessionId: 'b', runtime: 'local' }];
 const line = (pid, ppid, cpu, env = '', rss = 1024, start = '10:00:00') => `${pid} ${ppid} ${rss} ${cpu} Tue Nov 10 ${start} 2026 node ${env}`;
+const stat = (pid, user, system = 0, start = 100) => {
+  const fields = Array(22).fill('0');
+  fields[0] = 'R'; fields[11] = user; fields[12] = system; fields[19] = start;
+  return `${pid} (process (name)) ${fields.join(' ')}`;
+};
 
 test('CPU time formats and ps parsing retain only statistics and the identity tag', () => {
   assert.equal(cpuMilliseconds('0:01.25'), 1250);
@@ -62,7 +67,8 @@ test('PID reuse and changed ownership do not inherit old CPU usage', async () =>
 });
 
 test('Linux reads NUL-separated identity tags and can inherit across inaccessible child environments', async () => {
-  const sample = createSessionSampler({ platform: 'linux', uid: 1, run: async () => ({ stdout: `${line(1, 0, '0:01.00')}\n${line(2, 1, '0:01.00')}` }), read: async (file) => {
+  const sample = createSessionSampler({ platform: 'linux', uid: 1, clockTicks: 100, run: async () => ({ stdout: `${line(1, 0, '0:01.00')}\n${line(2, 1, '0:01.00')}` }), read: async (file) => {
+    if (file.endsWith('/stat')) return stat(Number(file.split('/')[2]), 100);
     if (file === '/proc/1/environ') return 'SECRET=private\0AW_SESSION_ID=a\0';
     throw new Error('permission denied');
   } });
@@ -80,18 +86,34 @@ test('unavailable process access never exposes raw command/environment errors or
   assert.equal(result.sessions.remote.cpuPercent, null);
 });
 
-test('native Linux collection attributes a tagged real process and samples its CPU twice', { skip: process.platform !== 'linux' }, async () => {
+test('Linux CPU uses subsecond kernel ticks and a stable start-time identity', async () => {
+  assert.deepEqual(linuxCpu(stat(1, 12, 3, 987), 100), { pid: 1, identity: '1:987', cpuMs: 150 });
+  let at = 0;
+  let cpu = 10;
+  const sample = createSessionSampler({ platform: 'linux', uid: 1, clockTicks: 100, now: () => at, monotonic: () => at,
+    run: async () => ({ stdout: line(1, 0, '00:00:00') }),
+    read: async (file) => file.endsWith('/stat') ? stat(1, cpu) : 'AW_SESSION_ID=a\0',
+  });
+  await sample(sessions);
+  at = 500; cpu = 11;
+  assert.equal((await sample(sessions)).sessions.a.cpuPercent, 2);
+});
+
+test('native Linux collection measures a tagged CPU-active process twice', { skip: process.platform !== 'linux', timeout: 10000 }, async () => {
   const owner = `watermark-process-test-${process.pid}`;
-  const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { env: { ...process.env, AW_SESSION_ID: owner }, stdio: 'ignore' });
+  const child = spawn(process.execPath, ['-e', "setInterval(() => { const until = performance.now() + 20; while (performance.now() < until) {} }, 50); process.send('ready');"], { env: { ...process.env, AW_SESSION_ID: owner }, stdio: ['ignore', 'ignore', 'ignore', 'ipc'] });
   try {
-    await once(child, 'spawn');
+    await once(child, 'message');
     const sample = createSessionSampler();
     const first = await sample([{ sessionId: owner, runtime: 'local' }]);
     assert.equal(first.sessions[owner].status, 'ok');
     assert.ok(first.sessions[owner].memoryMiB > 0);
-    await setTimeout(100);
+    await setTimeout(250);
     const next = await sample([{ sessionId: owner, runtime: 'local' }]);
-    assert.ok(next.sessions[owner].cpuPercent >= 0);
+    assert.notEqual(next.sessions[owner].cpuPercent, null);
+    assert.ok(next.sessions[owner].cpuPercent > 0 && next.sessions[owner].cpuPercent <= 150);
     assert.equal(next.sessions[owner].processCount, 1);
-  } finally { const exited = once(child, 'exit'); child.kill(); await exited; }
+  } finally {
+    if (child.pid && child.exitCode === null && child.signalCode === null) { const exited = once(child, 'exit'); child.kill(); await exited; }
+  }
 });

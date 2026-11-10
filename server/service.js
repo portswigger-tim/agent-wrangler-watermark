@@ -1,7 +1,7 @@
 import { Scheduler, headroom, totals } from './scheduler.js';
 import { createSampler } from './sampler.js';
 import { config } from './config.js';
-import { createSessionSampler } from './processes.js';
+import { createSessionSampler, ProcessSamplingError } from './processes.js';
 
 export function pressure(sample, settings, previous = 'normal') {
   if (!sample || sample.cpuPercent === null) return 'unknown';
@@ -14,7 +14,7 @@ export function pressure(sample, settings, previous = 'normal') {
 }
 
 export class ResourceService {
-  constructor({ disk, sample = createSampler(), sampleSessions = createSessionSampler(), now = Date.now, sendTimeoutMs = 1000 } = {}) {
+  constructor({ disk, sample = createSampler(), sampleSessions = createSessionSampler(), now = Date.now, sendTimeoutMs = 1000, measurementTimeoutMs = 5000 } = {}) {
     this.now = now;
     this.scheduler = new Scheduler({ disk, now });
     this.sample = sample;
@@ -28,7 +28,8 @@ export class ResourceService {
     this.sendTimeoutMs = sendTimeoutMs;
     this.sampleSessions = sampleSessions;
     this.measuring = null;
-    this.lastMeasurement = -Infinity;
+    this.measurementTimeoutMs = measurementTimeoutMs;
+    this.measurementAbort = null;
     this.sessionUsage = { sampledAt: null, sessions: {}, error: null, enabled: true };
   }
 
@@ -64,24 +65,29 @@ export class ResourceService {
     if (!this.closed) await host.rebuild();
     // Mail is advisory. It must never stall sampling, admission or the tools.
     void this.drain(host);
-    void this.measureSessions(host);
   }
 
   measureSessions(host) {
     if (this.closed) return this.measuring;
     if (host.settings.all().disableSessionMeasurements === true) {
+      this.measurementAbort?.abort();
       this.sessionUsage = { sampledAt: this.now(), sessions: {}, error: null, enabled: false };
       return this.measuring;
     }
     if (this.measuring) return this.measuring;
-    if (this.now() - this.lastMeasurement < 5000 && this.now() >= this.lastMeasurement) return null;
-    this.lastMeasurement = this.now();
-    this.measuring = Promise.resolve().then(() => this.sampleSessions(host.sessions.list?.() ?? [])).then((usage) => {
+    const controller = new AbortController();
+    this.measurementAbort = controller;
+    let timer;
+    const deadline = new Promise((resolve, reject) => {
+      controller.signal.addEventListener('abort', () => reject(new ProcessSamplingError('timeout')), { once: true });
+      timer = setTimeout(() => controller.abort(), this.measurementTimeoutMs);
+    });
+    this.measuring = Promise.race([deadline, Promise.resolve().then(() => this.sampleSessions(host.sessions.list?.() ?? [], { signal: controller.signal }))]).then((usage) => {
       if (!this.closed && host.settings.all().disableSessionMeasurements !== true) this.sessionUsage = { ...usage, enabled: true };
-    }).catch(() => {
+    }).catch((error) => {
       // Never expose a child-process error containing raw stdout/environment.
-      if (!this.closed && host.settings.all().disableSessionMeasurements !== true) this.sessionUsage = { sampledAt: this.now(), sessions: {}, error: 'Session process measurements unavailable.', enabled: true };
-    }).then(() => { if (!this.closed) return host.rebuild(); }).catch((error) => host.log?.(error)).finally(() => { this.measuring = null; });
+      if (!this.closed && host.settings.all().disableSessionMeasurements !== true) this.sessionUsage = { sampledAt: this.now(), sessions: {}, error: error instanceof ProcessSamplingError ? error.message : 'Session process measurements unavailable.', enabled: true };
+    }).then(() => { if (!this.closed) return host.rebuild(); }).catch((error) => host.log?.(error)).finally(() => { clearTimeout(timer); this.measuring = null; this.measurementAbort = null; });
     return this.measuring;
   }
 
@@ -146,5 +152,5 @@ export class ResourceService {
     return { ...snapshot, sessionUsage, requests: snapshot.requests.filter((r) => r.owner === owner), available, enabled: !this.closed, fresh: Boolean(this.telemetry && this.now() >= this.telemetry.sampledAt && this.now() - this.telemetry.sampledAt <= 15000), accounting: 'Measured host usage plus full declared reservations; intentionally conservative.' };
   }
 
-  close() { this.closed = true; this.scheduler.close(); }
+  close() { this.closed = true; this.measurementAbort?.abort(); this.scheduler.close(); }
 }

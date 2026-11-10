@@ -150,6 +150,11 @@ so a session can exceed 100%. Memory is summed resident set size (RSS), which ca
 count shared pages more than once. It differs from unique physical memory or an
 application's memory-pressure footprint.
 
+On Linux the CPU counter uses `/proc/<pid>/stat` clock ticks, converted with
+`CLK_TCK`, rather than whole-second formatted `ps` CPU time. Session measurement
+has its own five-second sweep and a five-second overall deadline, independent of
+admission refreshes.
+
 Measurements run independently of admission. CPU warms up over two samples.
 Missing, denied, stale or unsupported measurements display a dash, not zero.
 Short-lived jobs between samples, processes that shed their ancestry and tags,
@@ -157,12 +162,17 @@ and processes running as another user may not be attributed. Measured usage is
 kept separate from declared budgets and does not replace the conservative
 reservation accounting.
 
-On macOS, a bounded same-user `ps` snapshot reads arguments/environment to extract
-the session tag. On Linux, a same-user process snapshot and bounded procfs
+On macOS, a same-user `ps` stream reads arguments/environment one line at a time
+to extract the session tag (64 MiB total and 1 MiB per-line limits). On Linux, a
+same-user process snapshot and bounded procfs
 environment reads supply the tag. **Raw arguments and environments are never
 stored, logged, returned by tools, or sent to the browser**; only aggregate CPU,
 RSS and process counts leave the sampler. Measurements stay in memory and can be
 stopped using **Disable session measurements** in the extension settings.
+macOS's flattened argument/environment format makes identity attribution best
+effort: another value containing a matching tag can confuse it. Process tags are
+display hints, not authentication. Measurement limits or timeouts are reported
+without including raw process data.
 
 Run Wrangler natively on the machine doing the work. This release budgets the
 **host**, and does not model container cgroup quotas or remote resources.

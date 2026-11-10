@@ -16,7 +16,7 @@ function requestTable(doc, rows, { state, api, sessions, now, confirm }) {
   const table = element(doc, 'table');
   const head = element(doc, 'thead');
   const headings = element(doc, 'tr');
-  for (const title of ['Workload', 'Session', 'Budget', state === 'queued' ? 'Queue / wait' : state === 'offered' ? 'Claim within' : 'Running for', '']) {
+  for (const title of ['Workload', 'Session', 'Budget', state === 'queued' ? 'Queue / wait' : state === 'offered' ? 'Claim within' : 'Held for', '']) {
     const th = element(doc, 'th', title); th.scope = 'col'; headings.append(th);
   }
   head.append(headings);
@@ -27,6 +27,7 @@ function requestTable(doc, rows, { state, api, sessions, now, confirm }) {
     const owner = element(doc, 'td');
     const open = element(doc, 'button', sessionName(sessions, row.owner), 'watermark-session');
     open.type = 'button'; open.title = row.owner;
+    open.dataset.watermarkFocus = `session:${row.id}`;
     open.addEventListener('click', () => api.openSession?.(row.owner));
     owner.append(open); tr.append(owner);
     tr.append(element(doc, 'td', `${formatMemory(row.memoryMiB)} · ${row.cpuCores} CPU`));
@@ -52,6 +53,7 @@ export function render(el, data, { api, sessions = [], confirm = (message) => gl
   const doc = el.ownerDocument;
   const focused = el.contains(doc.activeElement) ? doc.activeElement : null;
   const focusedRequest = focused?.dataset?.watermarkRequest;
+  const focusedControl = focused?.dataset?.watermarkFocus;
   const focusedStatus = focused?.classList?.contains('watermark-status');
   const root = element(doc, 'section', undefined, 'watermark');
   root.append(element(doc, 'h1', 'Watermark'));
@@ -80,6 +82,7 @@ export function render(el, data, { api, sessions = [], confirm = (message) => gl
     const group = rows.filter((row) => row.state === state);
     const count = element(doc, 'a', undefined, `watermark-count watermark-${state}`);
     count.href = `#watermark-${state}`;
+    count.dataset.watermarkFocus = `count:${state}`;
     count.append(element(doc, 'strong', String(group.length)), element(doc, 'span', label));
     // Keep navigation inside this view; the board owns the URL hash.
     count.addEventListener('click', (event) => { event.preventDefault(); root.querySelector(`#watermark-${state}`)?.scrollIntoView?.({ block: 'nearest' }); });
@@ -101,8 +104,8 @@ export function render(el, data, { api, sessions = [], confirm = (message) => gl
   }
   root.append(element(doc, 'p', 'Budgets are declared estimates, not measured session usage. Offers expire after five minutes. Release grants only after all work stops.', 'watermark-muted'));
   el.replaceChildren(root);
-  if (focusedRequest || focusedStatus) {
-    const replacement = [...el.querySelectorAll('[data-watermark-request]')].find((button) => button.dataset.watermarkRequest === focusedRequest);
+  if (focusedRequest || focusedStatus || focusedControl) {
+    const replacement = [...el.querySelectorAll('[data-watermark-request], [data-watermark-focus]')].find((button) => (focusedRequest && button.dataset.watermarkRequest === focusedRequest) || (focusedControl && button.dataset.watermarkFocus === focusedControl));
     if (replacement) replacement.focus();
     else { status.tabIndex = -1; status.focus(); }
   }
@@ -126,7 +129,7 @@ export function renderCard(el, session, data, { now = Date.now(), navigate = () 
   button.textContent = `CPU ${cpu} · RAM ${memory}${suffix ? ` · ${suffix}` : ''}`;
   const sum = budget(rows);
   const unavailable = usage?.enabled === false ? 'Process measurement disabled.' : usage?.error || (measured?.status === 'unsupported' ? 'Remote/container process measurement unsupported.' : !valid ? 'No fresh, attributable local processes.' : measured.cpuPercent === null ? 'CPU is warming up.' : '');
-  button.title = `Measured local process CPU (100% = one core) and summed resident memory. ${valid ? `${measured.processCount} processes. ` : ''}${unavailable}\nDeclared budget held: ${formatMemory(sum.memory)} · ${sum.cpu} CPU.\nOpen Watermark for queue, offers and grants.`;
+  button.title = `Measured local process CPU (100% = one core) and summed resident memory. ${valid ? `${measured.processCount} processes. ` : ''}${unavailable}\nDeclared budget held: ${formatMemory(sum.memory)} · ${sum.cpu.toFixed(2)} CPU.\nOpen Watermark for queue, offers and grants.`;
   button.setAttribute('aria-label', `${button.textContent}. ${unavailable} Open Watermark queue and grants.`);
 }
 
