@@ -38,9 +38,15 @@ repos:
         args: [--branch, main]
 
   - repo: https://github.com/gitleaks/gitleaks
-    rev: 2ca41cc1372d1e939a6a879f18cdc19fc1cac1ce  # frozen: v8.30.0
+    rev: 6eaad039603a4de39fddd1cf5f727391efe9974e  # frozen: v8.30.0
     hooks:
       - id: gitleaks
+      - id: gitleaks
+        alias: gitleaks-history
+        name: scan committed history for secrets
+        entry: gitleaks git --redact --verbose
+        pass_filenames: false
+        always_run: true
 
   - repo: https://github.com/shellcheck-py/shellcheck-py
     rev: a6564f5d57444e123433a5c9af733e3975c77229  # frozen: v0.11.0.1-1
@@ -59,7 +65,7 @@ repos:
         args: [--offline]
 
   - repo: https://github.com/compilerla/conventional-pre-commit
-    rev: 81d3af62ea96a1f69f0cfa8745f253d3c4740896  # frozen: v4.5.0
+    rev: 33b50eb042bee26eac0ee96ad84aa9c1b4dccdd8  # frozen: v4.5.0
     hooks:
       - id: conventional-pre-commit
         stages: [commit-msg]
@@ -71,13 +77,19 @@ repos:
         name: no absolute local paths
         language: pygrep
         entry: '(/Users/[A-Za-z]|/home/[a-z][a-z0-9_-]*/|/private/tmp/|/private/var/folders/)'
-        exclude: '^(.*lock.*|\.pre-commit-config\.yaml)$'
+        exclude: '(^|/)(package-lock\.json|[^/]*\.lock|yarn\.lock|pnpm-lock\.yaml)$|^\.pre-commit-config\.yaml$'
 
       - id: javascript-syntax
         name: JavaScript syntax
         language: system
         entry: node scripts/check-js.mjs
         types: [javascript]
+      - id: lint
+        name: JavaScript lint
+        language: system
+        entry: npm run lint
+        pass_filenames: false
+        always_run: true
       - id: tests
         name: unit tests
         language: system
