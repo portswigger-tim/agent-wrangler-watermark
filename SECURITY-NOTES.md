@@ -9,6 +9,7 @@ None recorded.
 - 2026-11-10: Reviewed the initial CI and release workflows. PR jobs use a read-only token, SHA-pinned actions, no persisted checkout credentials, and no execution of pull-request metadata as shell input. Release writes are confined to the release job on main. No unresolved findings in that workflow review.
 - 2026-11-10: Independent bootstrap review found that the staged gitleaks hook scans no committed content on a clean CI checkout. Added a second full-history scan and full checkout history; retained the staged scan for local work. Also added PR title validation, narrowed lockfile exclusions, and kept main CI runs from cancelling each other.
 - 2026-11-10: Reviewed the resource tools, persistence, sampling and browser mutations. No arbitrary command execution is exposed. Every agent mutation validates an existing caller and limits access to its own reservations; remote runtimes cannot request host budgets. Labels render as text. Read failures and corrupt state block new grants. Grants persist until explicit release. Initial schema dependency had a high-severity advisory; replaced with patched Zod 4.6.7 and verified host SDK compatibility. No unresolved high-severity findings.
+- 2026-11-10: CI exposed a missing network rule for dependency auditing. Permit POST only to npm's bulk-advisory and quick-audit query endpoints, which receive the public dependency list. Registry package writes remain denied; the runner stays in enforce mode.
 
 ## Living threat model
 

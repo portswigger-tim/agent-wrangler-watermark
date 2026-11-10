@@ -45,6 +45,8 @@ jobs:
               "*": GET, HEAD
             registry.npmjs.org:
               "*": GET, HEAD
+              "-/npm/v1/security/advisories/bulk": POST
+              "-/npm/v1/security/audits/quick": POST
             pypi.org:
               "*": GET, HEAD
             files.pythonhosted.org:
