@@ -14,11 +14,11 @@
   "dependencies": {
     "zod": "4.6.7"
   },
-  "description": "CPU and memory monitoring with a cooperative resource reservation queue.",
+  "description": "Measured session CPU and memory with a cooperative resource reservation queue.",
   "wranglerExtension": {
     "id": "watermark",
     "label": "Watermark",
-    "description": "CPU and memory monitoring with a cooperative resource reservation queue.",
+    "description": "Measured session CPU and memory with a cooperative resource reservation queue.",
     "author": "Tim Birkett",
     "requires": [
       "sessions:read",

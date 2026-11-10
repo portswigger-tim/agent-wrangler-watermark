@@ -4,9 +4,9 @@ CPU and memory admission control for Agent Wrangler. When several agents want to
 run expensive work, Watermark reserves their declared budgets and queues work
 until the host has enough headroom.
 
-The extension samples the Wrangler host every five seconds, shows utilisation and
-per-session reservations on the board, and mails participating sessions when
-pressure changes or queued work is granted. Commands run through the agent's
+The extension samples the Wrangler host every five seconds, shows measured CPU
+and resident memory on session cards, and mails participating sessions when
+pressure changes or capacity is offered. Commands run through the agent's
 existing tools and permissions. Watermark never launches or kills commands.
 
 ## Install
@@ -23,7 +23,10 @@ consent; no manual npm command is needed for a Git URL installation.
 Review the capabilities and enable **Watermark**. New/resumed agents receive the
 `resource-budget` skill and five MCP tools. Existing agents may need a resume to
 receive the skill. Open the **Watermark** view in the board's navigation to see
-host usage and the queue; session cards and panels show declared reservations.
+host usage and separate lists of queued requests, offers awaiting claim and
+active grants. Session cards show measured CPU/RAM plus reservation counts;
+click the card's resource chip to open Watermark. No resource panel is inserted
+above the conversation.
 
 The extension needs `sessions:read` to identify callers and their runtime,
 `mail:send` for grant/pressure notices, and `board:rebuild` for dashboard updates.
@@ -136,16 +139,50 @@ CPU comes from deltas of the OS CPU counters, with one initial warm-up sample.
 Linux memory uses `/proc/meminfo`'s `MemAvailable`. macOS uses `vm_stat` free,
 inactive and speculative pages, an estimate of reclaimable memory; purgeable
 pages are not added separately. Other systems use free memory conservatively.
-Read failures pause admission. No shell or user-supplied executable is used for
-sampling.
+Host telemetry failures pause admission. No shell or user-supplied executable is
+used for sampling.
+
+Session cards measure visible processes belonging to the Wrangler user on native
+macOS and Linux. Attribution uses the `AW_SESSION_ID` launch tag and nearest
+tagged ancestor; a nested session's processes count only toward that session.
+CPU is an interval delta of live process CPU time: **100% means one logical core**,
+so a session can exceed 100%. Memory is summed resident set size (RSS), which can
+count shared pages more than once. It differs from unique physical memory or an
+application's memory-pressure footprint.
+
+On Linux the CPU counter uses `/proc/<pid>/stat` clock ticks, converted with
+`CLK_TCK`, rather than whole-second formatted `ps` CPU time. Session measurement
+has its own five-second sweep and a five-second overall deadline, independent of
+admission refreshes.
+
+Measurements run independently of admission. CPU warms up over two samples.
+Missing, denied, stale or unsupported measurements display a dash, not zero.
+Short-lived jobs between samples, processes that shed their ancestry and tags,
+and processes running as another user may not be attributed. Measured usage is
+kept separate from declared budgets and does not replace the conservative
+reservation accounting.
+
+On macOS, a same-user `ps` stream reads arguments/environment one line at a time
+to extract the session tag (64 MiB total and 1 MiB per-line limits). On Linux, a
+same-user process snapshot and bounded procfs
+environment reads supply the tag. **Raw arguments and environments are never
+stored, logged, returned by tools, or sent to the browser**; only aggregate CPU,
+RSS and process counts leave the sampler. Measurements stay in memory and can be
+stopped using **Disable session measurements** in the extension settings.
+macOS's flattened argument/environment format makes identity attribution best
+effort: another value containing a matching tag can confuse it. Process tags are
+display hints, not authentication. Measurement limits or timeouts are reported
+without including raw process data.
 
 Run Wrangler natively on the machine doing the work. This release budgets the
 **host**, and does not model container cgroup quotas or remote resources.
 Requests from remote/devcontainer session runtimes are refused. A native session
 can budget local Docker work, but must include its expected CPU/memory and retain
 the grant until containers stop. Docker Desktop VM usage contributes to host
-pressure; there is no per-container or per-process attribution. Session figures
-are **declared reservations**, not measured process usage.
+pressure; Docker daemon/container resource usage is not attributed to a session.
+The card's measured process usage and the app's declared budgets are different
+figures. A Docker client process may be measured, while its container's usage is
+outside that process tree.
 
 This is cooperative scheduling, not an OS resource limit or an OOM guarantee.
 Agents must use the tools and estimate responsibly. Commands run without a

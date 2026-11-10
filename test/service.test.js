@@ -179,3 +179,58 @@ test('hung notifications do not block refresh or retry an uncertain send; purged
   await f.service.drain(f.host);
   assert.equal(f.service.notices.size, 0);
 });
+
+test('slow or denied process measurement does not block admissions or expose raw errors', async () => {
+  const f = fixture();
+  let fail;
+  f.service.sampleSessions = () => new Promise((resolve, reject) => { fail = reject; });
+  await f.service.refresh(f.host);
+  const measuring = f.service.measureSessions(f.host);
+  await Promise.resolve();
+  assert.ok(f.service.measuring);
+  assert.equal(f.service.request('a', request, f.host).state, 'offered');
+  fail(new Error('SECRET=raw process output'));
+  await measuring;
+  assert.doesNotMatch(JSON.stringify(f.service.snapshot()), /SECRET|raw process/);
+  assert.match(f.service.snapshot().sessionUsage.error, /unavailable/);
+});
+
+test('status narrows process measurements to the caller, and measurement can be disabled', async () => {
+  const f = fixture();
+  f.service.sampleSessions = async () => ({ sampledAt: 0, sessions: { a: { memoryMiB: 20 }, b: { memoryMiB: 30 } }, error: null });
+  await f.service.measureSessions(f.host);
+  assert.deepEqual(Object.keys(f.service.status('a', f.host).sessionUsage.sessions), ['a']);
+  f.settings.disableSessionMeasurements = true;
+  await f.service.measureSessions(f.host);
+  assert.equal(f.service.snapshot().sessionUsage.enabled, false);
+});
+
+test('process sweep cadence is independent of admission rebuild timing and tool refreshes', async () => {
+  const f = fixture();
+  let calls = 0;
+  f.service.sampleSessions = async () => { calls++; return { sampledAt: calls, sessions: {}, error: null }; };
+  const sweep = manifest.sweeps.find((s) => s.id === 'session-measurements');
+  assert.equal(sweep.everyMs, 5000);
+  await f.service.refresh(f.host);
+  assert.equal(calls, 0);
+  await sweep.run({ host: f.host });
+  await f.service.refresh(f.host);
+  await sweep.run({ host: f.host });
+  assert.equal(calls, 2);
+});
+
+test('a complete measurement deadline clears the sweep and discards a late result', async () => {
+  const f = fixture();
+  f.service.measurementTimeoutMs = 5;
+  let complete;
+  f.service.sampleSessions = () => new Promise((resolve) => { complete = resolve; });
+  await f.service.measureSessions(f.host);
+  assert.match(f.service.sessionUsage.error, /timed out/);
+  assert.equal(f.service.measuring, null);
+  f.service.sampleSessions = async () => ({ sampledAt: 123, sessions: {}, error: null });
+  await f.service.measureSessions(f.host);
+  complete({ sampledAt: 0, sessions: { leaked: true }, error: null });
+  await Promise.resolve();
+  assert.equal(f.service.sessionUsage.sampledAt, 123);
+  assert.deepEqual(f.service.sessionUsage.sessions, {});
+});
