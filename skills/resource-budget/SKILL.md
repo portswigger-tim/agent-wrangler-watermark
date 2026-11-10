@@ -6,8 +6,9 @@ description: Use before heavy local work to request CPU and memory budgets, wait
 # Resource budgets
 
 Watermark monitors the Wrangler host and coordinates cooperating sessions. It does
-not execute commands, grant permissions, enforce OS limits or measure individual
-processes. Keep using your existing execution tools and permission controls.
+not execute commands, grant permissions or enforce OS limits. Session cards show
+measured local process CPU and resident memory separately from declared budgets.
+Keep using your existing execution tools and permission controls.
 
 Before a memory-hungry build, test suite, local model, or Docker workload:
 

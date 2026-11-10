@@ -1,15 +1,23 @@
 .watermark-view { padding: 1.5rem; overflow: auto; }
-.watermark { color: var(--fg); max-width: 72rem; padding: 0.75rem; }
-.watermark h1, .watermark h3 { margin: 0 0 0.75rem; }
+.watermark { color: var(--fg); max-width: 72rem; margin: 0 auto; }
+.watermark h1 { margin: 0 0 0.75rem; }
+.watermark h2 { margin: 0 0 0.5rem; font-size: 1rem; }
 .watermark p { margin: 0.5rem 0; line-height: 1.5; }
 .watermark-muted { color: var(--muted, var(--fg)); font-size: 0.9em; }
 .watermark-status { padding: 0.5rem; border: 1px solid var(--border); border-radius: 0.3rem; }
-.watermark-metrics { display: flex; flex-wrap: wrap; gap: 1rem; }
-.watermark-metrics > div { min-width: 12rem; flex: 1; padding: 0.75rem; background: var(--surface); border-radius: 0.3rem; }
+.watermark-metrics, .watermark-counts { display: flex; flex-wrap: wrap; gap: 0.75rem; margin: 1rem 0; }
+.watermark-metrics > div, .watermark-count { min-width: 10rem; flex: 1; padding: 0.75rem; background: var(--surface); border: 1px solid var(--border); border-radius: 0.3rem; }
+.watermark-count { display: flex; gap: 0.75rem; align-items: center; color: inherit; text-decoration: none; }
+.watermark-count strong { font-size: 1.5rem; }
+.watermark-count.watermark-queued { border-left: 3px solid var(--yellow, var(--accent)); }
+.watermark-count.watermark-offered { border-left: 3px solid var(--blue, var(--accent)); }
+.watermark-count.watermark-granted { border-left: 3px solid var(--green, var(--accent)); }
+.watermark-group { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--border); }
 .watermark meter { display: block; width: 100%; margin-top: 0.5rem; }
 .watermark-table { overflow-x: auto; }
-.watermark table { border-collapse: collapse; width: 100%; margin: 0.75rem 0; }
-.watermark caption { text-align: left; font-weight: bold; margin-bottom: 0.5rem; }
+.watermark table { border-collapse: collapse; width: 100%; }
 .watermark th, .watermark td { text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
 .watermark button { cursor: pointer; padding: 0.3rem 0.5rem; border: 1px solid var(--border); border-radius: 0.25rem; color: var(--fg); background: var(--surface); }
-.watermark button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.watermark .watermark-session { border: 0; padding: 0; background: none; color: var(--blue, var(--accent)); text-align: left; }
+.watermark button:focus-visible, .watermark-card:focus-visible, .watermark-count:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.watermark-card { cursor: pointer; font-variant-numeric: tabular-nums; max-width: 100%; white-space: normal; }

@@ -179,3 +179,26 @@ test('hung notifications do not block refresh or retry an uncertain send; purged
   await f.service.drain(f.host);
   assert.equal(f.service.notices.size, 0);
 });
+
+test('slow or denied process measurement does not block admissions or expose raw errors', async () => {
+  const f = fixture();
+  let fail;
+  f.service.sampleSessions = () => new Promise((resolve, reject) => { fail = reject; });
+  await f.service.refresh(f.host);
+  assert.ok(f.service.measuring);
+  assert.equal(f.service.request('a', request, f.host).state, 'offered');
+  fail(new Error('SECRET=raw process output'));
+  await f.service.measuring;
+  assert.doesNotMatch(JSON.stringify(f.service.snapshot()), /SECRET|raw process/);
+  assert.match(f.service.snapshot().sessionUsage.error, /unavailable/);
+});
+
+test('status narrows process measurements to the caller, and measurement can be disabled', async () => {
+  const f = fixture();
+  f.service.sampleSessions = async () => ({ sampledAt: 0, sessions: { a: { memoryMiB: 20 }, b: { memoryMiB: 30 } }, error: null });
+  await f.service.refresh(f.host); await f.service.measuring;
+  assert.deepEqual(Object.keys(f.service.status('a', f.host).sessionUsage.sessions), ['a']);
+  f.settings.disableSessionMeasurements = true;
+  await f.service.refresh(f.host);
+  assert.equal(f.service.snapshot().sessionUsage.enabled, false);
+});
