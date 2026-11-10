@@ -49,7 +49,7 @@ function requestTable(doc, rows, { state, api, sessions, now, confirm }) {
   return scroll;
 }
 
-export function render(el, data, { api, sessions = [], confirm = (message) => globalThis.confirm(message), now = Date.now() } = {}) {
+export function render(el, data, { api, sessions = [], settings = {}, confirm = (message) => globalThis.confirm(message), now = Date.now() } = {}) {
   const doc = el.ownerDocument;
   const focused = el.contains(doc.activeElement) ? doc.activeElement : null;
   const focusedRequest = focused?.dataset?.watermarkRequest;
@@ -70,6 +70,13 @@ export function render(el, data, { api, sessions = [], confirm = (message) => gl
       metric.append(element(doc, 'strong', `${label}: ${percent === null ? 'warming up' : `${percent.toFixed(0)}%`}`));
       if (percent !== null) {
         const meter = element(doc, 'meter'); meter.min = 0; meter.max = 100; meter.value = percent;
+        const soft = settings.softPercent ?? 75;
+        const hard = settings.hardPercent ?? 90;
+        const known = fresh(telemetry.sampledAt, now) && !data.error && Number.isFinite(soft) && Number.isFinite(hard) && soft < hard;
+        const level = !known ? 'unknown' : percent >= hard ? 'hard' : percent >= soft ? 'soft' : 'normal';
+        meter.low = soft; meter.high = hard; meter.optimum = 0;
+        meter.dataset.pressure = level;
+        meter.setAttribute('aria-valuetext', `${percent.toFixed(0)}% · ${level}`);
         meter.setAttribute('aria-label', `Host ${label} utilisation`); metric.append(meter);
       }
       metric.append(element(doc, 'p', detail)); metrics.append(metric);
@@ -138,7 +145,7 @@ export default {
     reg.register('view', {
       id: 'resources', label: 'Watermark',
       mount(el) { el.classList.add('watermark-view'); },
-      update(el, session, graph) { render(el, graph?.watermark, { api: reg.api, sessions: graph?.sessions || [] }); },
+      update(el, session, graph) { render(el, graph?.watermark, { api: reg.api, sessions: graph?.sessions || [], settings: reg.api.settings?.() || {} }); },
       badge: (graph) => liveRequests(graph?.watermark).filter((r) => r.state === 'queued').length,
     });
     reg.register('card.pill', {
