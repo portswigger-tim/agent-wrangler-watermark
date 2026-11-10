@@ -12,6 +12,7 @@ function element(doc, tag, text, className) {
 export function render(el, data, { owner = null, api, confirm = (message) => globalThis.confirm(message), now = Date.now() } = {}) {
   const doc = el.ownerDocument;
   const focusedRequest = el.contains(doc.activeElement) ? doc.activeElement?.dataset?.watermarkRequest : null;
+  const focusedStatus = el.contains(doc.activeElement) && doc.activeElement?.classList?.contains('watermark-status');
   const root = element(doc, 'section', undefined, 'watermark');
   root.append(element(doc, owner ? 'h3' : 'h1', owner ? 'Resource reservations' : 'Watermark'));
   const telemetry = data?.telemetry;
@@ -74,7 +75,7 @@ export function render(el, data, { owner = null, api, confirm = (message) => glo
   }
   root.append(element(doc, 'p', 'Offers expire after five minutes unless claimed before work starts. Claimed grants stay reserved across restarts and session archives until released after work stops. Remote runtimes and per-container attribution are unsupported.', 'watermark-muted'));
   el.replaceChildren(root);
-  if (focusedRequest) {
+  if (focusedRequest || focusedStatus) {
     const replacement = [...el.querySelectorAll('button')].find((button) => button.dataset.watermarkRequest === focusedRequest);
     if (replacement) replacement.focus();
     else { status.tabIndex = -1; status.focus(); }

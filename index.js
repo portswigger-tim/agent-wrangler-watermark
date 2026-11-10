@@ -9,7 +9,7 @@ export const declaration = {
   description: 'CPU and memory monitoring with a cooperative resource reservation queue.',
   author: 'Tim Birkett',
   requires: ['sessions:read', 'mail:send', 'board:rebuild'],
-  engines: { wranglerApi: '^1.31.0' },
+  engines: { wranglerApi: '^1.57.0' },
 };
 
 export default {

@@ -76,12 +76,13 @@ export class ResourceService {
       try {
         await Promise.race([
           Promise.resolve().then(() => { if (!this.closed) return host.mail.send(notice.owner, notice.text); }),
-          new Promise((resolve, reject) => { timer = setTimeout(() => reject(new Error('Mail timeout')), this.sendTimeoutMs); }),
+          new Promise((resolve, reject) => { timer = setTimeout(() => reject(Object.assign(new Error('Mail timeout'), { code: 'WATERMARK_MAIL_TIMEOUT' })), this.sendTimeoutMs); }),
         ]);
         drop();
-      } catch {
+      } catch (error) {
         notice.attempts++;
-        if (notice.attempts >= 3) drop();
+        // A timed-out append may still complete: do not risk sending it twice.
+        if (error.code === 'WATERMARK_MAIL_TIMEOUT' || notice.attempts >= 3) drop();
       } finally { clearTimeout(timer); }
     }));
   }

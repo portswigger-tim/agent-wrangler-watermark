@@ -11,13 +11,15 @@ existing tools and permissions. Watermark never launches or kills commands.
 
 ## Install
 
-Requires Node.js 22 or newer and Agent Wrangler host API **1.31.0 or newer in the
+Requires Node.js 22 or newer and Agent Wrangler host API **1.57.0 or newer in the
 1.x series**. In **Settings → Extensions → + Add extension → Git URL**, enter:
 
 ```text
 https://github.com/portswigger-tim/agent-wrangler-watermark.git
 ```
 
+Wrangler installs the locked runtime dependencies automatically after extension
+consent; no manual npm command is needed for a Git URL installation.
 Review the capabilities and enable **Watermark**. New/resumed agents receive the
 `resource-budget` skill and five MCP tools. Existing agents may need a resume to
 receive the skill. Open the **Watermark** view in the board's navigation to see
@@ -68,6 +70,14 @@ returns the existing request; different arguments are rejected. Status and wait
 responses are authoritative; notification delivery is best effort. Only the
 caller's requests appear in its status response. The board operator can see and
 release all reservations after confirming the work stopped.
+
+An offer holds its declared budget against other requests, but is not a promise
+that a later claim will succeed. Host usage can change between offer and claim.
+In particular, another claimed job starting work raises measured usage while its
+full reservation remains counted. Claiming can therefore pause even while the
+host could physically fit the workload. This is the conservative accounting
+policy applied at both stages. Retain the offer and retry after a sample, cancel
+it, or request a new budget if the five-minute offer expires.
 
 ## Admission policy
 

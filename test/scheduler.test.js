@@ -157,3 +157,22 @@ test('disable also rejects idempotent request and claim retries', () => {
   assert.throws(() => s.request('a', input('a'), sample(), settings), /disabled/);
   assert.throws(() => s.claim('a', a.id, sample(), settings), /disabled/);
 });
+
+test('sequential claims retain the conservative policy when another offered job starts', () => {
+  const cfg = config();
+  const initial = sample(0, { totalMemoryMiB: 16384, availableMemoryMiB: 12384, cpuCores: 16 });
+  const s = new Scheduler({ now: () => 0 });
+  const a = s.request('a', input('a', { memoryMiB: 4000 }), initial, cfg);
+  const b = s.request('b', input('b', { memoryMiB: 5000 }), initial, cfg);
+  s.pump(initial, cfg);
+  assert.equal(s.get('a', a.id).state, 'offered');
+  assert.equal(s.get('b', b.id).state, 'offered');
+  s.claim('a', a.id, initial, cfg);
+  // Measured usage grows after A starts; its full reservation still counts.
+  const running = { ...initial, availableMemoryMiB: 8384 };
+  assert.throws(() => s.claim('b', b.id, running, cfg), /no longer fits/);
+  assert.equal(s.get('b', b.id).state, 'offered');
+  s.release('a', a.id);
+  // Once A stops and telemetry recovers, B can claim the same offer.
+  assert.equal(s.claim('b', b.id, initial, cfg).state, 'granted');
+});

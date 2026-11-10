@@ -160,20 +160,21 @@ test('re-enable reconciliation cancels queued/offered work for dead owners but r
   assert.equal(f.service.scheduler.get('a', queued.id).state, 'cancelled');
 });
 
-test('hung notifications do not block refresh; attempts are bounded and purged mail is dropped', async () => {
+test('hung notifications do not block refresh or retry an uncertain send; purged mail is dropped', async () => {
   const f = fixture();
   f.service.sendTimeoutMs = 5;
   await f.service.refresh(f.host);
   await f.service.delivering;
-  f.host.mail.send = () => new Promise(() => {});
+  let attempts = 0;
+  f.host.mail.send = () => { attempts++; return new Promise(() => {}); };
   f.service.request('a', request, f.host);
-  for (let i = 0; i < 3; i++) {
-    f.advance();
-    await f.service.refresh(f.host);
-    assert.ok(f.service.delivering); // Refresh resolved while delivery was pending.
-    await f.service.delivering;
-  }
+  f.advance();
+  await f.service.refresh(f.host);
+  assert.ok(f.service.delivering); // Refresh resolved while delivery was pending.
+  await f.service.delivering;
   assert.equal(f.service.notices.size, 0);
+  f.advance(); await f.service.refresh(f.host); await f.service.delivering;
+  assert.equal(attempts, 1);
   f.service.notice('purged', 'missing', 'test');
   await f.service.drain(f.host);
   assert.equal(f.service.notices.size, 0);

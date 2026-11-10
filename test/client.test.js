@@ -67,3 +67,16 @@ test('metrics and rows refresh while a release button has focus', () => {
   assert.match(f.el.textContent, /CPU: 80%/);
   assert.equal(f.el.querySelectorAll('tbody tr').length, 0);
 });
+
+test('status focus survives repeated refreshes after a control disappears', () => {
+  const f = fixture();
+  let active;
+  Object.defineProperty(f.document, 'activeElement', { configurable: true, get: () => active });
+  f.window.HTMLElement.prototype.focus = function () { active = this; };
+  render(f.el, data, f.options);
+  f.el.querySelector('button').focus();
+  render(f.el, { ...data, requests: [] }, f.options);
+  assert.ok(active.classList.contains('watermark-status'));
+  render(f.el, { ...data, requests: [] }, f.options);
+  assert.equal(active, f.el.querySelector('.watermark-status'));
+});
