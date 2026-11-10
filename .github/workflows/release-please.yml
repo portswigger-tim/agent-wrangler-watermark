@@ -1,0 +1,36 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  # Tags and publishes a release once a release PR has merged. It never opens
+  # PRs: the YOLO session does that with yolo_release_pr, as the human, so the
+  # PR starts CI and Actions keeps "create pull requests" switched off. Tags
+  # are immutable by ruleset.
+  release-please:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      # Relabels the merged release PR "autorelease: tagged"; never creates one.
+      pull-requests: write
+    steps:
+      - uses: portswigger-tim/safer-runner-action@d9772c3c7c5c0f8cd6cb7123e138120b11c12371 # v2.2.1
+        with:
+          mode: enforce
+          allowed-domains: |
+            github.com
+            api.github.com
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          skip-github-pull-request: true

@@ -1,0 +1,86 @@
+# Verification gate. CI runs the same hooks (`pre-commit run --all-files`).
+# YOLO baseline template: keep every hook below, then add the repo's own
+# linters, formatters and tests under `repo: local` (or their upstream hook
+# repos), and re-freeze with `pre-commit autoupdate --freeze`.
+#
+# One-time setup in each clone, which installs every hook type below:
+#   pre-commit install
+#
+# Stages:
+#   pre-commit, pre-merge-commit: hygiene, secrets, workflow lint, lint, unit tests
+#   commit-msg: conventional commits (release-please derives the SemVer bump from them)
+#   pre-push: the same again before anything leaves the machine
+#
+# Revs are pinned to commit SHAs; `pre-commit autoupdate --freeze` bumps them.
+default_install_hook_types: [pre-commit, pre-merge-commit, pre-push, commit-msg]
+default_stages: [pre-commit, pre-merge-commit, pre-push]
+fail_fast: false
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+      - id: detect-private-key
+      - id: no-commit-to-branch
+        args: [--branch, main]
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: 2ca41cc1372d1e939a6a879f18cdc19fc1cac1ce  # frozen: v8.30.0
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: a6564f5d57444e123433a5c9af733e3975c77229  # frozen: v0.11.0.1-1
+    hooks:
+      - id: shellcheck
+
+  - repo: https://github.com/rhysd/actionlint
+    rev: 914e7df21a07ef503a81201c76d2b11c789d3fca  # frozen: v1.7.12
+    hooks:
+      - id: actionlint
+
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: 06a39750ec31860bb44f2acf67182c40016cd1e7  # frozen: v1.32.0
+    hooks:
+      - id: zizmor
+        args: [--offline]
+
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: 81d3af62ea96a1f69f0cfa8745f253d3c4740896  # frozen: v4.5.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+
+  - repo: local
+    hooks:
+      # Machine-specific paths must never reach a shared repo.
+      - id: no-local-paths
+        name: no absolute local paths
+        language: pygrep
+        entry: '(/Users/[A-Za-z]|/home/[a-z][a-z0-9_-]*/|/private/tmp/|/private/var/folders/)'
+        exclude: '^(.*lock.*|\.pre-commit-config\.yaml)$'
+
+      - id: javascript-syntax
+        name: JavaScript syntax
+        language: system
+        entry: node scripts/check-js.mjs
+        types: [javascript]
+      - id: tests
+        name: unit tests
+        language: system
+        entry: npm test
+        pass_filenames: false
+        always_run: true
