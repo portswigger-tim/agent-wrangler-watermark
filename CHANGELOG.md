@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/portswigger-tim/agent-wrangler-watermark/compare/v0.2.0...v0.2.1) (2026-11-10)
+
+
+### Bug Fixes
+
+* colour utilisation bars by watermark level ([#8](https://github.com/portswigger-tim/agent-wrangler-watermark/issues/8)) ([8138203](https://github.com/portswigger-tim/agent-wrangler-watermark/commit/8138203db9481eacc77821850ede4a9174144c97))
+
 ## [0.2.0](https://github.com/portswigger-tim/agent-wrangler-watermark/compare/v0.1.0...v0.2.0) (2026-11-10)
 
 
