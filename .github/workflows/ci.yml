@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The same gate as the local hooks, so a commit made without them still
+  # can't reach main. yolo_harden_repo makes this job a required check once it
+  # has run on a PR. Add the repo's build and test jobs beside it; prefer
+  # adding jobs to renaming them, since a renamed required check blocks PRs.
+  pre-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: portswigger-tim/safer-runner-action@d9772c3c7c5c0f8cd6cb7123e138120b11c12371 # v2.2.1
+        with:
+          mode: enforce
+          # Comments go here, never inside the block below: the action reads
+          # every word in it as a domain. gitleaks and actionlint are Go hooks:
+          # pre-commit builds them from module downloads.
+          allowed-domains: |
+            registry.npmjs.org
+            pypi.org
+            files.pythonhosted.org
+            proxy.golang.org
+            sum.golang.org
+            storage.googleapis.com
+          http-filter: |
+            github.com:
+              "*": GET, HEAD
+              "*/git-upload-pack": POST
+            api.github.com:
+              "*": GET, HEAD
+            release-assets.githubusercontent.com:
+              "*": GET, HEAD
+            registry.npmjs.org:
+              "*": GET, HEAD
+            pypi.org:
+              "*": GET, HEAD
+            files.pythonhosted.org:
+              "*": GET, HEAD
+            proxy.golang.org:
+              "*": GET, HEAD
+            sum.golang.org:
+              "*": GET, HEAD
+            storage.googleapis.com:
+              "*": GET, HEAD
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
+      - run: pip install pre-commit==4.7.0
+      # Validate main with the same branch guard used locally.
+      - run: git switch -c ci-verification
+      - run: pre-commit run --all-files --show-diff-on-failure --color=always
