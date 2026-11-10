@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # The same gate as the local hooks, so a commit made without them still
@@ -58,10 +58,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
+      - run: npm ci --ignore-scripts
+      - run: npm audit --omit=dev --audit-level=high
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.13'
@@ -69,3 +72,10 @@ jobs:
       # Validate main with the same branch guard used locally.
       - run: git switch -c ci-verification
       - run: pre-commit run --all-files --show-diff-on-failure --color=always
+      - name: Validate squash commit title
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          printf '%s\n' "$PR_TITLE" > /tmp/pr-title.txt
+          pre-commit run conventional-pre-commit --hook-stage commit-msg --commit-msg-filename /tmp/pr-title.txt

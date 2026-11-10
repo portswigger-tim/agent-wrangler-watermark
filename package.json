@@ -3,11 +3,36 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "license": "Apache-2.0",
+  "license": "MIT",
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "zod": "4.6.7"
+  },
+  "description": "CPU and memory monitoring with a cooperative resource reservation queue.",
+  "wranglerExtension": {
+    "id": "watermark",
+    "label": "Watermark",
+    "description": "CPU and memory monitoring with a cooperative resource reservation queue.",
+    "author": "Tim Birkett",
+    "requires": [
+      "sessions:read",
+      "mail:send",
+      "board:rebuild"
+    ],
+    "engines": {
+      "wranglerApi": "^1.31.0"
+    }
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "eslint": "9.39.5",
+    "globals": "17.14.0",
+    "linkedom": "0.18.15"
   }
 }
