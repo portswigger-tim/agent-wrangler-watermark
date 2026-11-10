@@ -25,13 +25,16 @@ Before a memory-hungry build, test suite, local model, or Docker workload:
    key per workload. Retry that same key after an uncertain response to avoid
    duplicate reservations. Reusing it with different arguments is an error.
 4. If queued, call `watermark_wait` with its `id` (up to 25 seconds per call), or
-   work on something lightweight while grant mail arrives. Never start the
-   workload before the request is **granted**. A wait timeout leaves it queued;
-   expired/cancelled/released requests require a new key. Mail is a hint; status
+   work on something lightweight while offer mail arrives. A wait timeout leaves
+   it queued; expired/cancelled/released/rejected requests require a new key.
+   Mail is a hint; status
    and wait responses are authoritative.
-5. Before starting, confirm the reservation is still granted, the extension is
-   enabled, telemetry is fresh, and pressure is not hard/unknown. If pressure is
-   hard, wait for recovery; retain the budget or cancel work and release it.
+5. An `offered` budget holds capacity for five minutes. Immediately before
+   starting, call `watermark_claim` with its `id`. Start only if the claim returns
+   **granted**. The claim checks fresh telemetry, pressure and remaining headroom.
+   If paused, do lightweight work and retry after the next five-second sample.
+   If the offer expires, request a new budget with a new key. Never start from
+   an offer or a notification alone.
 6. Run through your normal command tools. Keep the reservation throughout the
    whole workload. In cleanup/finally, call `watermark_release` only once the
    command **and all background descendants/containers have stopped**. Cancelling
@@ -44,12 +47,13 @@ large one; a large request can hold up smaller requests until it fits, expires o
 is cancelled. A budget larger than total admissible capacity is rejected when
 telemetry is available.
 
-Active grants never expire automatically: a disconnected agent may still have
+Unclaimed offers expire after five minutes, so abandoned work cannot hold capacity
+forever. Claimed grants never expire automatically: a disconnected agent may still have
 running work. Grants persist across restarts and session archives. Before
 restarting work after a disconnect, inspect status and recover or stop existing
 work; do not launch it a second time. The operator can free a stranded reservation
-from the Watermark view after confirming all work stopped. Queued requests are
-cancelled on archive/purge, while active grants remain visible.
+from the Watermark view after confirming all work stopped. Queued requests and
+offers are cancelled on archive/purge, while claimed grants remain visible.
 
 Pressure mail is sent only to participating sessions. At soft pressure reduce
 parallelism where practical. At hard pressure do not start more heavy work.

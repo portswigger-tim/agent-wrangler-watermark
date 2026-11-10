@@ -19,7 +19,7 @@ https://github.com/portswigger-tim/agent-wrangler-watermark.git
 ```
 
 Review the capabilities and enable **Watermark**. New/resumed agents receive the
-`resource-budget` skill and four MCP tools. Existing agents may need a resume to
+`resource-budget` skill and five MCP tools. Existing agents may need a resume to
 receive the skill. Open the **Watermark** view in the board's navigation to see
 host usage and the queue; session cards and panels show declared reservations.
 
@@ -50,9 +50,12 @@ predictor. Reduce worker counts when a workload will not fit.
 3. If the returned reservation is `queued`, call `watermark_wait` with its `id`
    and optionally `seconds` (default 20, maximum 25), or do lightweight work
    while waiting for mail. A wait timeout leaves the reservation queued.
-4. Start only after it is `granted`, the extension is enabled, telemetry is fresh,
-   and pressure is neither `hard` nor `unknown`. Run with your normal execution
-   tool and permission controls.
+4. When its state is `offered`, call `watermark_claim` with its `id` immediately
+   before starting. Offers reserve capacity for five minutes; unclaimed offers
+   expire automatically. The claim rechecks telemetry, pressure and capacity.
+   Start only if the claim returns `granted`. Run with your normal execution tool
+   and permission controls. If claiming is paused, do lightweight work and retry
+   after the next five-second sample; an expired offer needs a new request key.
 5. Call `watermark_release` with the `id` once the command **and all background
    work or containers have stopped**. The same tool cancels queued requests.
 
@@ -79,7 +82,8 @@ release all reservations after confirming the work stopped.
 - Strict FIFO: small jobs cannot overtake and starve a large earlier request.
   Cancel or reduce a large request if it is holding up the queue.
 - Queue deadlines default to 30 minutes and can be set from 1 second to 24 hours.
-  Impossible budgets are rejected when telemetry is available. Missing, stale
+  Unclaimed offers expire after five minutes. Impossible queued/offered budgets
+  are rejected when telemetry or settings show they cannot fit. Missing, stale
   (over 15 seconds old), or warming CPU telemetry blocks new grants.
 - Maximum 128 live requests globally, 8 per session, and 100 retained terminal
   requests. Idempotency is retained while the corresponding record is retained.
@@ -92,9 +96,11 @@ expiry notices remain enabled. Watermark does not wake dormant sessions itself.
 
 ## Restarts and stranded reservations
 
-Granted budgets never expire automatically: an agent can disconnect while its
+Claimed budgets never expire automatically: an agent can disconnect while its
 command keeps running. Reservations persist across restarts, disable/re-enable
-and session archive/purge. Archive/purge cancels queued requests, but keeps grants.
+and session archive/purge. Archive/purge cancels queued requests and unclaimed
+offers, but keeps grants. Sweeps also reconcile requests belonging to sessions
+that were archived or purged while the extension was disabled.
 After a disconnect, inspect existing work before starting another copy.
 
 If an agent cannot release its grant, stop the workload and use **Release** in the
@@ -108,6 +114,11 @@ State is atomically written with private file permissions to
 corrupt state file prevents activation rather than discarding granted budgets.
 Uninstall leaves this file in place. Remove it only after every reserved workload
 has stopped and no Wrangler instance is using it.
+
+Only one Wrangler instance may manage a given data directory and host budget.
+The extension relies on Wrangler's instance lock and does not coordinate across
+separate instances. A process killed during a write may leave an ignored `.tmp`
+file; the last successfully replaced state file remains authoritative.
 
 ## Measurement and scope
 

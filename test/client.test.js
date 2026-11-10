@@ -57,3 +57,13 @@ test('reserved figures exclude queued and terminal requests', () => {
   assert.deepEqual(budget(data.requests), { memory: 1024, cpu: 2 });
   assert.equal(liveRequests(data, 'a').length, 1);
 });
+
+test('metrics and rows refresh while a release button has focus', () => {
+  const f = fixture();
+  render(f.el, data, f.options);
+  const button = f.el.querySelector('button');
+  Object.defineProperty(f.document, 'activeElement', { configurable: true, get: () => button });
+  render(f.el, { ...data, telemetry: { ...data.telemetry, cpuPercent: 80 }, requests: [] }, f.options);
+  assert.match(f.el.textContent, /CPU: 80%/);
+  assert.equal(f.el.querySelectorAll('tbody tr').length, 0);
+});

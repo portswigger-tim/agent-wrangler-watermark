@@ -1,5 +1,5 @@
-export const liveRequests = (data, owner) => (data?.requests || []).filter((r) => ['queued', 'granted'].includes(r.state) && (!owner || r.owner === owner));
-export const budget = (rows) => rows.filter((r) => r.state === 'granted').reduce((sum, r) => ({ memory: sum.memory + r.memoryMiB, cpu: sum.cpu + r.cpuCores }), { memory: 0, cpu: 0 });
+export const liveRequests = (data, owner) => (data?.requests || []).filter((r) => ['queued', 'offered', 'granted'].includes(r.state) && (!owner || r.owner === owner));
+export const budget = (rows) => rows.filter((r) => ['offered', 'granted'].includes(r.state)).reduce((sum, r) => ({ memory: sum.memory + r.memoryMiB, cpu: sum.cpu + r.cpuCores }), { memory: 0, cpu: 0 });
 export const formatMemory = (mib) => mib >= 1024 ? `${(mib / 1024).toFixed(1)} GiB` : `${Math.round(mib)} MiB`;
 
 function element(doc, tag, text, className) {
@@ -11,6 +11,7 @@ function element(doc, tag, text, className) {
 
 export function render(el, data, { owner = null, api, confirm = (message) => globalThis.confirm(message), now = Date.now() } = {}) {
   const doc = el.ownerDocument;
+  const focusedRequest = el.contains(doc.activeElement) ? doc.activeElement?.dataset?.watermarkRequest : null;
   const root = element(doc, 'section', undefined, 'watermark');
   root.append(element(doc, owner ? 'h3' : 'h1', owner ? 'Resource reservations' : 'Watermark'));
   const telemetry = data?.telemetry;
@@ -55,9 +56,11 @@ export function render(el, data, { owner = null, api, confirm = (message) => glo
     const body = element(doc, 'tbody');
     for (const row of rows) {
       const tr = element(doc, 'tr');
-      for (const text of [row.label, row.owner, row.state, formatMemory(row.memoryMiB), row.cpuCores.toFixed(2)]) tr.append(element(doc, 'td', text));
+      const state = row.state === 'offered' ? `offered · claim within ${Math.max(0, Math.ceil((row.claimDeadline - now) / 1000))}s` : row.state;
+      for (const text of [row.label, row.owner, state, formatMemory(row.memoryMiB), row.cpuCores.toFixed(2)]) tr.append(element(doc, 'td', text));
       const action = element(doc, 'td');
-      const button = element(doc, 'button', row.state === 'queued' ? 'Cancel' : 'Release');
+      const button = element(doc, 'button', row.state === 'granted' ? 'Release' : 'Cancel');
+      button.dataset.watermarkRequest = row.id;
       button.type = 'button';
       button.addEventListener('click', () => {
         if (row.state === 'granted' && !confirm('Release this budget only if the command AND all background work or containers have stopped. Has all work stopped?')) return;
@@ -69,10 +72,13 @@ export function render(el, data, { owner = null, api, confirm = (message) => glo
     const scroll = element(doc, 'div', undefined, 'watermark-table');
     scroll.append(table); root.append(scroll);
   }
-  root.append(element(doc, 'p', 'Queued work expires at its wait deadline. Granted budgets stay reserved across restarts and session archives until released after work stops. Remote runtimes and per-container attribution are unsupported.', 'watermark-muted'));
-  // Do not replace a focused release control on each graph tick.
-  if (el.contains(doc.activeElement)) return;
+  root.append(element(doc, 'p', 'Offers expire after five minutes unless claimed before work starts. Claimed grants stay reserved across restarts and session archives until released after work stops. Remote runtimes and per-container attribution are unsupported.', 'watermark-muted'));
   el.replaceChildren(root);
+  if (focusedRequest) {
+    const replacement = [...el.querySelectorAll('button')].find((button) => button.dataset.watermarkRequest === focusedRequest);
+    if (replacement) replacement.focus();
+    else { status.tabIndex = -1; status.focus(); }
+  }
 }
 
 export default {

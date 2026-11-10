@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Scheduler, headroom } from '../server/scheduler.js';
+import { Scheduler, headroom, OFFER_TTL_MS } from '../server/scheduler.js';
 import { config } from '../server/config.js';
 
 const settings = config({ reserveMemoryMiB: 0 });
@@ -13,7 +13,7 @@ test('admissions reserve both resources atomically and do not overcommit', async
     scheduler.request(`owner${i}`, input(`${i}`), sample(), settings);
     scheduler.pump(sample(), settings);
   })));
-  assert.equal(scheduler.snapshot().filter((r) => r.state === 'granted').length, 3);
+  assert.equal(scheduler.snapshot().filter((r) => r.state === 'offered').length, 3);
   assert.equal(scheduler.snapshot().filter((r) => r.state === 'queued').length, 5);
   const available = headroom(sample(), settings, { memoryMiB: 6000, cpuCores: 6 });
   assert.equal(available.memoryMiB, 0);
@@ -29,8 +29,8 @@ test('FIFO blocks small later work, then drains after release', () => {
   s.pump(sample(), settings);
   assert.equal(s.get('c', small.id).state, 'queued');
   s.release('a', first.id); s.pump(sample(), settings);
-  assert.equal(s.get('b', large.id).state, 'granted');
-  assert.equal(s.get('c', small.id).state, 'granted');
+  assert.equal(s.get('b', large.id).state, 'offered');
+  assert.equal(s.get('c', small.id).state, 'offered');
 });
 
 test('CPU and memory each independently constrain admissions', () => {
@@ -59,13 +59,14 @@ test('unknown, stale and warming telemetry never grants', () => {
   }
 });
 
-test('only queued work expires; active grants survive time and restart', () => {
+test('claimed grants survive time and restart while queued work expires', () => {
   let now = 0;
   let saved;
   const disk = { load: () => saved, save: (value) => { saved = structuredClone(value); } };
   const s = new Scheduler({ disk, now: () => now });
   const granted = s.request('a', input('a'), sample(), settings);
   s.pump(sample(), settings);
+  s.claim('a', granted.id, sample(), settings);
   const queued = s.request('b', input('b', { queueTimeoutSeconds: 1 }), sample(), settings);
   now = 2000; s.pump(null, settings);
   const restarted = new Scheduler({ disk, now: () => now });
@@ -89,7 +90,7 @@ test('waiting is event-driven and cleans listeners on grant, timeout and disable
   const a = s.request('a', input('x'), sample(), settings);
   const wait = s.wait('a', a.id, 1);
   s.pump(sample(), settings);
-  assert.equal((await wait).state, 'granted');
+  assert.equal((await wait).state, 'offered');
   const b = s.request('a', input('y'), sample(), settings);
   assert.equal((await s.wait('a', b.id, 0.001)).state, 'queued');
   const disabled = s.wait('a', b.id, 1); s.close(); await disabled;
@@ -109,4 +110,50 @@ test('corrupt persistence fails closed, session and global caps are bounded', ()
   assert.throws(() => s.request('a', input('ninth'), sample(), settings), /limit/);
   for (let i = 8; i < 128; i++) s.request(`owner${i}`, input(String(i)), sample(), settings);
   assert.throws(() => s.request('b', input('extra'), sample(), settings), /limit/);
+});
+
+test('unclaimed offers expire and free capacity; claimed grants do not', () => {
+  let now = 0;
+  const s = new Scheduler({ now: () => now });
+  const a = s.request('a', input('a'), sample(), settings);
+  const b = s.request('b', input('b'), sample(), settings);
+  s.pump(sample(), settings);
+  assert.equal(s.get('a', a.id).state, 'offered');
+  assert.equal(s.claim('a', a.id, sample(), settings).state, 'granted');
+  assert.equal(s.claim('a', a.id, null, settings).state, 'granted');
+  now = OFFER_TTL_MS;
+  s.pump(sample(now), settings);
+  assert.equal(s.get('b', b.id).state, 'expired');
+  assert.equal(s.get('a', a.id).state, 'granted');
+  assert.throws(() => s.claim('b', b.id, sample(now), settings), /not offered/);
+});
+
+test('claim rejects stale telemetry and increased usage, and cannot revive an expired offer', () => {
+  let now = 0;
+  const s = new Scheduler({ now: () => now });
+  const a = s.request('a', input('a'), sample(), settings);
+  s.pump(sample(), settings);
+  assert.throws(() => s.claim('a', a.id, null, settings), /paused/);
+  assert.throws(() => s.claim('a', a.id, sample(0, { cpuPercent: 89 }), settings), /no longer fits/);
+  now = OFFER_TTL_MS;
+  assert.equal(s.claim('a', a.id, sample(now), settings).state, 'expired');
+});
+
+test('new telemetry and settings reject impossible head requests instead of blocking FIFO', () => {
+  const s = new Scheduler({ now: () => 0 });
+  const a = s.request('a', input('a', { memoryMiB: 8000 }), null, settings);
+  const b = s.request('b', input('b'), null, settings);
+  s.pump(sample(), config({ hardPercent: 70, softPercent: 60, reserveMemoryMiB: 0 }));
+  assert.equal(s.get('a', a.id).state, 'rejected');
+  assert.equal(s.get('b', b.id).state, 'offered');
+});
+
+test('disable also rejects idempotent request and claim retries', () => {
+  const s = new Scheduler({ now: () => 0 });
+  const a = s.request('a', input('a'), sample(), settings);
+  s.pump(sample(), settings);
+  s.claim('a', a.id, sample(), settings);
+  s.close();
+  assert.throws(() => s.request('a', input('a'), sample(), settings), /disabled/);
+  assert.throws(() => s.claim('a', a.id, sample(), settings), /disabled/);
 });

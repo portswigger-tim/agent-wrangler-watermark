@@ -16,7 +16,7 @@ export default {
   ...declaration,
   dir: fileURLToPath(new URL('.', import.meta.url)),
   defaultEnabled: true,
-  help: 'Reserve declared CPU and memory before heavy local commands. Watermark queues requests until headroom is available and shows system usage and session reservations. Commands retain their existing permission controls. Reservations survive restart and require explicit release after work stops. Docker and process usage are not attributed to individual sessions.',
+  help: 'Request CPU and memory before heavy local commands, then claim the capacity offer within five minutes. Watermark queues requests until headroom is available and shows system usage and session reservations. Claimed grants survive restart and require explicit release after work stops. Docker and process usage are not attributed to individual sessions.',
   stores: { resources: () => new ResourceService({ disk: persistence(stateFile()) }) },
   settings: SETTINGS,
   tools,
@@ -46,5 +46,5 @@ export default {
 
 function cancelQueued(host, owner) {
   const scheduler = host.stores.resources.scheduler;
-  for (const row of scheduler.snapshot().filter((r) => r.owner === owner && r.state === 'queued')) scheduler.release(owner, row.id);
+  for (const row of scheduler.snapshot().filter((r) => r.owner === owner && ['queued', 'offered'].includes(r.state))) scheduler.release(owner, row.id);
 }

@@ -29,7 +29,7 @@ test('tools validate identity/budgets and isolate reservations', async () => {
   assert.equal((await call('watermark_request', f.host, 'missing', request)).isError, true);
   assert.equal((await call('watermark_request', f.host, 'a', { ...request, cpuCores: -1 })).isError, true);
   const granted = await call('watermark_request', f.host, 'a', request);
-  assert.equal(granted.structuredContent.reservation.state, 'granted');
+  assert.equal(granted.structuredContent.reservation.state, 'offered');
   assert.equal((await call('watermark_status', f.host, 'b')).structuredContent.requests.length, 0);
   assert.equal((await call('watermark_release', f.host, 'b', { id: granted.structuredContent.reservation.id })).isError, true);
   f.host.sessions.get = () => ({ runtime: 'devcontainer' });
@@ -51,13 +51,14 @@ test('hard pressure pauses admissions until hysteresis recovery; warnings dedupl
   assert.equal(f.service.level, 'hard');
   assert.equal(f.service.scheduler.get('b', queued.id).state, 'queued');
   f.cpu(10); f.advance(); await f.service.refresh(f.host);
-  assert.equal(f.service.scheduler.get('b', queued.id).state, 'granted');
+  assert.equal(f.service.scheduler.get('b', queued.id).state, 'offered');
 });
 
 test('configuration and telemetry failures block grants and retain active budgets', async () => {
   const f = fixture();
   await f.service.refresh(f.host);
   const active = f.service.request('a', request, f.host);
+  f.service.claim('a', active.id, f.host);
   f.fail(); f.advance(); await f.service.refresh(f.host);
   const queued = f.service.request('b', { ...request, key: 'b' }, f.host);
   assert.equal(queued.state, 'queued');
@@ -82,16 +83,18 @@ test('overlapping sweeps coalesce and disabled service cannot grant', async () =
   assert.throws(() => f.service.request('a', request, f.host), /disabled/);
 });
 
-test('notification failures retry without revoking the granted reservation', async () => {
+test('notification failures retry without revoking the capacity offer', async () => {
   const f = fixture();
   await f.service.refresh(f.host);
   const r = f.service.request('a', request, f.host);
   f.host.mail.send = () => { throw new Error('mail offline'); };
   f.advance(); await f.service.refresh(f.host);
-  assert.equal(f.service.scheduler.get('a', r.id).state, 'granted');
+  await f.service.delivering;
+  assert.equal(f.service.scheduler.get('a', r.id).state, 'offered');
   assert.equal(f.service.notices.size, 1);
   f.host.mail.send = async () => {};
   f.advance(); await f.service.refresh(f.host);
+  await f.service.delivering;
   assert.equal(f.service.notices.size, 0);
 });
 
@@ -108,6 +111,7 @@ test('archive cancels queued work while retaining grants and browser release wor
   const f = fixture();
   await f.service.refresh(f.host);
   const active = f.service.request('a', request, f.host);
+  f.service.claim('a', active.id, f.host);
   f.cpu(99); f.advance(); await f.service.refresh(f.host);
   const queued = f.service.request('a', { ...request, key: 'queued' }, f.host);
   manifest.session.onArchive({ host: f.host, sessionId: 'a' });
@@ -128,4 +132,49 @@ test('watermarks validate and recover with five-point hysteresis', () => {
   const sample = { cpuPercent: 89, totalMemoryMiB: 100, availableMemoryMiB: 90 };
   assert.equal(pressure(sample, config(), 'hard'), 'hard');
   assert.equal(pressure({ ...sample, cpuPercent: 69 }, config(), 'hard'), 'normal');
+});
+
+test('a tool claim is required, and hard pressure blocks claiming an offer', async () => {
+  const f = fixture();
+  const response = await call('watermark_request', f.host, 'a', request);
+  const id = response.structuredContent.reservation.id;
+  assert.equal(response.structuredContent.reservation.state, 'offered');
+  f.cpu(99); f.advance();
+  assert.equal((await call('watermark_claim', f.host, 'a', { id })).isError, true);
+  f.cpu(10); f.advance();
+  assert.equal((await call('watermark_claim', f.host, 'a', { id })).structuredContent.reservation.state, 'granted');
+});
+
+test('re-enable reconciliation cancels queued/offered work for dead owners but retains grants', async () => {
+  const f = fixture();
+  await f.service.refresh(f.host);
+  const active = f.service.request('a', request, f.host);
+  f.service.claim('a', active.id, f.host);
+  const offered = f.service.request('a', { ...request, key: 'offered' }, f.host);
+  f.cpu(99); f.advance(); await f.service.refresh(f.host);
+  const queued = f.service.request('a', { ...request, key: 'queued' }, f.host);
+  f.host.sessions.get = () => null;
+  f.advance(); await f.service.refresh(f.host);
+  assert.equal(f.service.scheduler.get('a', active.id).state, 'granted');
+  assert.equal(f.service.scheduler.get('a', offered.id).state, 'cancelled');
+  assert.equal(f.service.scheduler.get('a', queued.id).state, 'cancelled');
+});
+
+test('hung notifications do not block refresh; attempts are bounded and purged mail is dropped', async () => {
+  const f = fixture();
+  f.service.sendTimeoutMs = 5;
+  await f.service.refresh(f.host);
+  await f.service.delivering;
+  f.host.mail.send = () => new Promise(() => {});
+  f.service.request('a', request, f.host);
+  for (let i = 0; i < 3; i++) {
+    f.advance();
+    await f.service.refresh(f.host);
+    assert.ok(f.service.delivering); // Refresh resolved while delivery was pending.
+    await f.service.delivering;
+  }
+  assert.equal(f.service.notices.size, 0);
+  f.service.notice('purged', 'missing', 'test');
+  await f.service.drain(f.host);
+  assert.equal(f.service.notices.size, 0);
 });

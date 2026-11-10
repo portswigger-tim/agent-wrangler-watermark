@@ -17,6 +17,7 @@ jobs:
   # PR starts CI and Actions keeps "create pull requests" switched off. Tags
   # are immutable by ruleset.
   release-please:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
