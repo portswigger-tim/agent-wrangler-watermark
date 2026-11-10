@@ -13,7 +13,15 @@
 .watermark-count.watermark-offered { border-left: 3px solid var(--blue, var(--accent)); }
 .watermark-count.watermark-granted { border-left: 3px solid var(--green, var(--accent)); }
 .watermark-group { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--border); }
-.watermark meter { display: block; width: 100%; margin-top: 0.5rem; }
+.watermark meter { display: block; width: 100%; height: 0.75rem; margin-top: 0.5rem; appearance: none; --watermark-fill: #22c55e; background: var(--surface-2, #d1d5db); border: 0; border-radius: 1rem; overflow: hidden; }
+.watermark meter[data-pressure="soft"] { --watermark-fill: #f59e0b; }
+.watermark meter[data-pressure="hard"] { --watermark-fill: #ef4444; }
+.watermark meter[data-pressure="unknown"] { --watermark-fill: #9ca3af; }
+.watermark meter::-webkit-meter-bar { background: var(--surface-2, #d1d5db); border: 0; border-radius: 1rem; }
+.watermark meter::-webkit-meter-optimum-value,
+.watermark meter::-webkit-meter-suboptimum-value,
+.watermark meter::-webkit-meter-even-less-good-value { background: var(--watermark-fill); border-radius: 1rem; }
+.watermark meter::-moz-meter-bar { background: var(--watermark-fill); border-radius: 1rem; }
 .watermark-table { overflow-x: auto; }
 .watermark table { border-collapse: collapse; width: 100%; }
 .watermark th, .watermark td { text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
