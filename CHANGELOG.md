@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/portswigger-tim/agent-wrangler-watermark/compare/v0.1.0...v0.2.0) (2026-11-10)
+
+
+### Features
+
+* show measured session CPU and memory on cards ([#5](https://github.com/portswigger-tim/agent-wrangler-watermark/issues/5)) ([aaaebcd](https://github.com/portswigger-tim/agent-wrangler-watermark/commit/aaaebcdebea4805bdba9029b96248d1196e23c49))
+
 ## 0.1.0 (2026-11-10)
 
 
