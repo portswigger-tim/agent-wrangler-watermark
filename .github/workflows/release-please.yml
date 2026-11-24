@@ -25,7 +25,7 @@ jobs:
       # Relabels the merged release PR "autorelease: tagged"; never creates one.
       pull-requests: write
     steps:
-      - uses: portswigger-tim/safer-runner-action@d9772c3c7c5c0f8cd6cb7123e138120b11c12371 # v2.2.1
+      - uses: portswigger-tim/safer-runner-action@e7a4410b8713de3759dae8997ee1c0223863bba9 # v2.5.2
         with:
           mode: enforce
           allowed-domains: |
